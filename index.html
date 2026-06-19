@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blanqueria Mauri Gestion</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navegacion principal">
+        <div class="brand">
+          <span class="brand-mark">BM</span>
+          <div>
+            <strong>Blanqueria Mauri</strong>
+            <span>Gestion comercial</span>
+          </div>
+        </div>
+        <nav class="nav-list" aria-label="Secciones">
+          <button class="nav-item active" data-view="dashboard" type="button">Resumen</button>
+          <button class="nav-item" data-view="inventory" type="button">Inventario</button>
+          <button class="nav-item" data-view="sales" type="button">Ventas</button>
+          <button class="nav-item" data-view="customers" type="button">Clientes</button>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Panel operativo</p>
+            <h1 id="view-title">Resumen</h1>
+          </div>
+          <div class="topbar-actions">
+            <button id="export-backup" class="ghost-button" type="button">Exportar respaldo</button>
+            <button id="import-backup" class="ghost-button" type="button">Importar respaldo</button>
+            <input id="backup-file" type="file" accept="application/json,.json" hidden />
+            <button id="reset-demo" class="ghost-button" type="button">Restaurar datos demo</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboard-view" aria-labelledby="view-title">
+          <div class="metric-grid">
+            <article class="metric-card">
+              <span>Stock valorizado</span>
+              <strong id="metric-stock">$0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Ventas del mes</span>
+              <strong id="metric-sales">$0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Productos bajos</span>
+              <strong id="metric-low-stock">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Clientes activos</span>
+              <strong id="metric-customers">0</strong>
+            </article>
+          </div>
+
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Alertas de stock</h2>
+              </div>
+              <div id="stock-alerts" class="stack-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <h2>Ultimas ventas</h2>
+              </div>
+              <div id="recent-sales" class="stack-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="inventory-view" aria-label="Inventario">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Productos</h2>
+              <button id="add-product" class="primary-button" type="button">Agregar producto</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Producto</th>
+                    <th>Categoria</th>
+                    <th>Stock</th>
+                    <th>Minimo</th>
+                    <th>Precio</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="inventory-table"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="sales-view" aria-label="Ventas">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Nueva venta</h2>
+            </div>
+            <form id="sale-form" class="form-grid">
+              <label>
+                Producto
+                <select id="sale-product" required></select>
+              </label>
+              <label>
+                Cliente
+                <select id="sale-customer" required></select>
+              </label>
+              <label>
+                Cantidad
+                <input id="sale-quantity" type="number" min="1" value="1" required />
+              </label>
+              <label>
+                Monto pagado
+                <input id="sale-paid" type="number" min="0" step="100" value="0" required />
+              </label>
+              <button class="primary-button" type="submit">Registrar venta</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Historial</h2>
+            </div>
+            <div id="sales-list" class="stack-list"></div>
+          </section>
+        </section>
+
+        <section class="view" id="customers-view" aria-label="Clientes">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>Clientes</h2>
+              <button id="add-customer" class="primary-button" type="button">Agregar cliente</button>
+            </div>
+            <div id="customers-list" class="customer-grid"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="product-dialog">
+      <form id="product-form" method="dialog" class="modal-form">
+        <h2 id="product-dialog-title">Producto</h2>
+        <input id="product-id" type="hidden" />
+        <label>
+          Nombre
+          <input id="product-name" required />
+        </label>
+        <label>
+          Categoria
+          <input id="product-category" required />
+        </label>
+        <label>
+          Stock
+          <input id="product-stock" type="number" min="0" required />
+        </label>
+        <label>
+          Stock minimo
+          <input id="product-min-stock" type="number" min="0" required />
+        </label>
+        <label>
+          Precio
+          <input id="product-price" type="number" min="0" step="100" required />
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" value="cancel" type="button" data-close-dialog>Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="customer-dialog">
+      <form id="customer-form" method="dialog" class="modal-form">
+        <h2>Cliente</h2>
+        <input id="customer-id" type="hidden" />
+        <label>
+          Nombre
+          <input id="customer-name" required />
+        </label>
+        <label>
+          Telefono
+          <input id="customer-phone" />
+        </label>
+        <label>
+          Direccion
+          <input id="customer-address" />
+        </label>
+        <label>
+          Observaciones
+          <textarea id="customer-notes" rows="4"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" value="cancel" type="button" data-close-dialog>Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Guardar</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="customer-detail-dialog" class="wide-dialog">
+      <section class="detail-panel">
+        <div class="detail-header">
+          <div>
+            <p class="eyebrow">Ficha de cliente</p>
+            <h2 id="detail-customer-name">Cliente</h2>
+          </div>
+          <button class="ghost-button" type="button" data-close-dialog>Cerrar</button>
+        </div>
+
+        <div class="detail-grid">
+          <article class="summary-box">
+            <span>Telefono</span>
+            <strong id="detail-customer-phone">Sin telefono</strong>
+          </article>
+          <article class="summary-box">
+            <span>Direccion</span>
+            <strong id="detail-customer-address">Sin direccion</strong>
+          </article>
+          <article class="summary-box">
+            <span>Total comprado</span>
+            <strong id="detail-total-bought">$0</strong>
+          </article>
+          <article class="summary-box">
+            <span>Total pagado</span>
+            <strong id="detail-total-paid">$0</strong>
+          </article>
+          <article class="summary-box balance-box">
+            <span>Saldo pendiente</span>
+            <strong id="detail-total-balance">$0</strong>
+          </article>
+        </div>
+
+        <section class="notes-box">
+          <h3>Observaciones</h3>
+          <p id="detail-customer-notes">Sin observaciones.</p>
+        </section>
+
+        <div class="detail-actions">
+          <a id="detail-whatsapp" class="whatsapp-button" target="_blank" rel="noopener">Enviar WhatsApp</a>
+        </div>
+
+        <section>
+          <div class="panel-header">
+            <h3>Historial de ventas</h3>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Detalle</th>
+                  <th>Total</th>
+                  <th>Pagado</th>
+                  <th>Saldo</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="detail-sales-table"></tbody>
+            </table>
+          </div>
+          <p id="detail-empty-sales" class="empty">Este cliente no tiene ventas registradas.</p>
+        </section>
+      </section>
+    </dialog>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
