@@ -10,7 +10,10 @@
     <div class="app-shell">
       <aside class="sidebar" aria-label="Navegacion principal">
         <div class="brand">
-          <span class="brand-mark">BM</span>
+          <span class="brand-logo-wrap">
+            <span class="brand-logo-fallback">BM</span>
+            <img class="brand-logo" src="./assets/logo-blanqueria-mauri.png" alt="Logo de Blanqueria Mauri" />
+          </span>
           <div>
             <strong>Blanqueria Mauri</strong>
             <span>Gestion comercial</span>
@@ -18,7 +21,6 @@
         </div>
         <nav class="nav-list" aria-label="Secciones">
           <button class="nav-item active" data-view="dashboard" type="button">Resumen</button>
-          <button class="nav-item" data-view="inventory" type="button">Inventario</button>
           <button class="nav-item" data-view="sales" type="button">Ventas</button>
           <button class="nav-item" data-view="customers" type="button">Clientes</button>
         </nav>
@@ -41,60 +43,40 @@
         <section class="view active" id="dashboard-view" aria-labelledby="view-title">
           <div class="metric-grid">
             <article class="metric-card">
-              <span>Stock valorizado</span>
-              <strong id="metric-stock">$0</strong>
+              <span>Ventas del dia</span>
+              <strong id="metric-day-sales">$0</strong>
             </article>
             <article class="metric-card">
               <span>Ventas del mes</span>
-              <strong id="metric-sales">$0</strong>
+              <strong id="metric-month-sales">$0</strong>
             </article>
             <article class="metric-card">
-              <span>Productos bajos</span>
-              <strong id="metric-low-stock">0</strong>
+              <span>Cobrado del dia</span>
+              <strong id="metric-day-paid">$0</strong>
             </article>
             <article class="metric-card">
-              <span>Clientes activos</span>
-              <strong id="metric-customers">0</strong>
+              <span>Cobrado del mes</span>
+              <strong id="metric-month-paid">$0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Saldo pendiente total</span>
+              <strong id="metric-total-balance">$0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Clientes con saldo</span>
+              <strong id="metric-customers-with-balance">0</strong>
+            </article>
+            <article class="metric-card">
+              <span>Ventas pendientes</span>
+              <strong id="metric-pending-sales">0</strong>
             </article>
           </div>
 
-          <div class="content-grid">
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Alertas de stock</h2>
-              </div>
-              <div id="stock-alerts" class="stack-list"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-header">
-                <h2>Ultimas ventas</h2>
-              </div>
-              <div id="recent-sales" class="stack-list"></div>
-            </section>
-          </div>
-        </section>
-
-        <section class="view" id="inventory-view" aria-label="Inventario">
           <section class="panel">
             <div class="panel-header">
-              <h2>Productos</h2>
-              <button id="add-product" class="primary-button" type="button">Agregar producto</button>
+              <h2>Ultimos movimientos</h2>
             </div>
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Producto</th>
-                    <th>Categoria</th>
-                    <th>Stock</th>
-                    <th>Minimo</th>
-                    <th>Precio</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody id="inventory-table"></tbody>
-              </table>
-            </div>
+            <div id="recent-movements" class="stack-list"></div>
           </section>
         </section>
 
@@ -103,24 +85,44 @@
             <div class="panel-header">
               <h2>Nueva venta</h2>
             </div>
-            <form id="sale-form" class="form-grid">
-              <label>
-                Producto
-                <select id="sale-product" required></select>
-              </label>
-              <label>
-                Cliente
-                <select id="sale-customer" required></select>
-              </label>
-              <label>
-                Cantidad
-                <input id="sale-quantity" type="number" min="1" value="1" required />
-              </label>
-              <label>
-                Monto pagado
-                <input id="sale-paid" type="number" min="0" step="100" value="0" required />
-              </label>
-              <button class="primary-button" type="submit">Registrar venta</button>
+            <form id="sale-form" class="sale-form">
+              <div class="form-grid sale-meta-grid">
+                <label>
+                  Fecha de venta
+                  <input id="sale-date" type="date" required />
+                </label>
+                <label>
+                  Cliente
+                  <select id="sale-customer" required></select>
+                </label>
+                <label>
+                  Entrega inicial
+                  <input id="sale-initial-payment" type="number" min="0" step="100" value="0" required />
+                </label>
+              </div>
+
+              <div class="sale-items-header">
+                <h3>Items de la venta</h3>
+                <button id="add-sale-item" class="ghost-button" type="button">Agregar item</button>
+              </div>
+
+              <div id="sale-items" class="sale-items"></div>
+
+              <div class="sale-totals">
+                <article class="summary-box">
+                  <span>Total venta</span>
+                  <strong id="sale-total-preview">$0</strong>
+                </article>
+                <article class="summary-box">
+                  <span>Total entregado</span>
+                  <strong id="sale-paid-preview">$0</strong>
+                </article>
+                <article class="summary-box balance-box">
+                  <span>Saldo pendiente</span>
+                  <strong id="sale-balance-preview">$0</strong>
+                </article>
+                <button class="primary-button" type="submit">Registrar venta</button>
+              </div>
             </form>
           </section>
 
@@ -143,37 +145,6 @@
         </section>
       </main>
     </div>
-
-    <dialog id="product-dialog">
-      <form id="product-form" method="dialog" class="modal-form">
-        <h2 id="product-dialog-title">Producto</h2>
-        <input id="product-id" type="hidden" />
-        <label>
-          Nombre
-          <input id="product-name" required />
-        </label>
-        <label>
-          Categoria
-          <input id="product-category" required />
-        </label>
-        <label>
-          Stock
-          <input id="product-stock" type="number" min="0" required />
-        </label>
-        <label>
-          Stock minimo
-          <input id="product-min-stock" type="number" min="0" required />
-        </label>
-        <label>
-          Precio
-          <input id="product-price" type="number" min="0" step="100" required />
-        </label>
-        <div class="modal-actions">
-          <button class="ghost-button" value="cancel" type="button" data-close-dialog>Cancelar</button>
-          <button class="primary-button" value="default" type="submit">Guardar</button>
-        </div>
-      </form>
-    </dialog>
 
     <dialog id="customer-dialog">
       <form id="customer-form" method="dialog" class="modal-form">
@@ -241,6 +212,8 @@
         </section>
 
         <div class="detail-actions">
+          <button id="detail-new-sale" class="ghost-button" type="button">Nueva venta</button>
+          <button id="detail-register-payment" class="ghost-button" type="button">Registrar pago</button>
           <a id="detail-whatsapp" class="whatsapp-button" target="_blank" rel="noopener">Enviar WhatsApp</a>
         </div>
 
@@ -248,24 +221,37 @@
           <div class="panel-header">
             <h3>Historial de ventas</h3>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Detalle</th>
-                  <th>Total</th>
-                  <th>Pagado</th>
-                  <th>Saldo</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody id="detail-sales-table"></tbody>
-            </table>
-          </div>
+          <div id="detail-sales-list" class="customer-history"></div>
           <p id="detail-empty-sales" class="empty">Este cliente no tiene ventas registradas.</p>
         </section>
       </section>
+    </dialog>
+
+    <dialog id="payment-dialog">
+      <form id="payment-form" method="dialog" class="modal-form">
+        <h2>Registrar pago</h2>
+        <input id="payment-customer-id" type="hidden" />
+        <label>
+          Venta pendiente
+          <select id="payment-sale" required></select>
+        </label>
+        <label>
+          Fecha de pago
+          <input id="payment-date" type="date" required />
+        </label>
+        <label>
+          Monto
+          <input id="payment-amount" type="number" min="1" step="1" inputmode="numeric" required />
+        </label>
+        <label>
+          Observacion
+          <textarea id="payment-note" rows="3"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button class="ghost-button" value="cancel" type="button" data-close-dialog>Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Guardar pago</button>
+        </div>
+      </form>
     </dialog>
 
     <script type="module" src="./app.js"></script>

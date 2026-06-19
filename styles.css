@@ -1,12 +1,13 @@
 :root {
-  --bg: #f6f7f4;
+  --bg: #f7f5ef;
   --surface: #ffffff;
-  --surface-strong: #f0f3ed;
+  --surface-strong: #f3efe4;
   --ink: #20231f;
   --muted: #6b7169;
-  --line: #dfe4db;
-  --accent: #2f6f61;
-  --accent-dark: #214f45;
+  --line: #e4ded0;
+  --accent: #f2b632;
+  --accent-dark: #c98616;
+  --accent-ink: #2d2414;
   --warn: #a45124;
   --danger: #a33b3b;
   --shadow: 0 18px 45px rgba(34, 45, 36, 0.1);
@@ -42,27 +43,48 @@ button {
 }
 
 .sidebar {
-  background: #1f2a27;
-  color: #f8fbf8;
+  background: #241f18;
+  color: #fffaf0;
   padding: 28px 20px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   margin-bottom: 34px;
 }
 
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
+.brand-logo-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
   border-radius: 8px;
-  background: #f3cf74;
-  color: #1f2a27;
-  font-weight: 800;
+  background: #fff8e8;
+  border: 1px solid rgba(242, 182, 50, 0.45);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.brand-logo-fallback {
+  position: absolute;
+  color: var(--accent-ink);
+  font-weight: 900;
+  font-size: 1rem;
+}
+
+.brand-logo {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 6px;
+  z-index: 1;
 }
 
 .brand strong,
@@ -71,7 +93,7 @@ button {
 }
 
 .brand span {
-  color: #c9d6d0;
+  color: #e5d6b9;
   font-size: 0.9rem;
   margin-top: 3px;
 }
@@ -85,15 +107,15 @@ button {
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #dce6e0;
+  color: #eadfca;
   padding: 12px 14px;
   text-align: left;
 }
 
 .nav-item.active,
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  background: rgba(242, 182, 50, 0.16);
+  color: #fff8e8;
 }
 
 .main-content {
@@ -151,7 +173,7 @@ h2 {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 14px;
 }
 
@@ -209,7 +231,7 @@ h2 {
 
 .primary-button {
   background: var(--accent);
-  color: #ffffff;
+  color: var(--accent-ink);
 }
 
 .primary-button:hover {
@@ -307,6 +329,65 @@ th {
   grid-template-columns: 1.3fr 1.3fr 0.7fr 0.8fr auto;
   align-items: end;
   gap: 12px;
+}
+
+.sale-form {
+  display: grid;
+  gap: 16px;
+}
+
+.sale-meta-grid {
+  grid-template-columns: 0.8fr 1.4fr 0.9fr;
+}
+
+.sale-items-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sale-items-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.sale-items {
+  display: grid;
+  gap: 10px;
+}
+
+.sale-item-row {
+  display: grid;
+  grid-template-columns: 1.5fr 0.55fr 0.8fr 0.75fr auto;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+}
+
+.sale-item-subtotal {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.sale-item-subtotal strong {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  color: var(--ink);
+}
+
+.sale-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
+  align-items: end;
+  gap: 10px;
 }
 
 label {
@@ -456,7 +537,9 @@ dialog::backdrop {
 
 .detail-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
+  gap: 8px;
 }
 
 .whatsapp-button {
@@ -486,6 +569,76 @@ dialog::backdrop {
   color: #6b3aa7;
 }
 
+.customer-history {
+  display: grid;
+  gap: 12px;
+}
+
+.history-sale {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+}
+
+.history-sale-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.history-sale-header strong,
+.history-sale-header span {
+  display: block;
+}
+
+.history-sale-totals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.history-section {
+  display: grid;
+  gap: 8px;
+}
+
+.history-section h4 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  text-transform: uppercase;
+}
+
+.history-lines {
+  display: grid;
+  gap: 6px;
+}
+
+.history-line {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr auto;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.history-line span {
+  color: var(--muted);
+}
+
+.compact-empty {
+  padding: 10px;
+}
+
 @media (max-width: 900px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -506,7 +659,11 @@ dialog::backdrop {
   .metric-grid,
   .content-grid,
   .form-grid,
-  .detail-grid {
+  .detail-grid,
+  .sale-meta-grid,
+  .sale-item-row,
+  .sale-totals,
+  .history-line {
     grid-template-columns: 1fr;
   }
 }
@@ -519,7 +676,9 @@ dialog::backdrop {
   .topbar,
   .panel-header,
   .list-item,
-  .detail-header {
+  .detail-header,
+  .sale-items-header,
+  .history-sale-header {
     align-items: stretch;
     flex-direction: column;
   }
@@ -529,6 +688,11 @@ dialog::backdrop {
   }
 
   .topbar-actions {
+    justify-content: stretch;
+  }
+
+  .detail-actions,
+  .history-sale-totals {
     justify-content: stretch;
   }
 }

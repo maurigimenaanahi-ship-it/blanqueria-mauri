@@ -16,6 +16,7 @@ const demoState = {
 };
 
 let state = loadState();
+let activeCustomerId = null;
 
 const money = new Intl.NumberFormat("es-AR", {
   style: "currency",
@@ -25,14 +26,12 @@ const money = new Intl.NumberFormat("es-AR", {
 
 const views = {
   dashboard: document.querySelector("#dashboard-view"),
-  inventory: document.querySelector("#inventory-view"),
   sales: document.querySelector("#sales-view"),
   customers: document.querySelector("#customers-view")
 };
 
 const titles = {
   dashboard: "Resumen",
-  inventory: "Inventario",
   sales: "Ventas",
   customers: "Clientes"
 };
@@ -55,7 +54,7 @@ function saveState() {
 function buildBackupPayload() {
   return {
     app: "blanqueria-mauri-gestion",
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     data: normalizeState(state)
   };
@@ -95,7 +94,7 @@ function importBackupFile(file) {
   reader.addEventListener("load", () => {
     try {
       const importedState = parseBackupPayload(String(reader.result ?? ""));
-      const confirmed = confirm("Importar este respaldo reemplazara todos los datos actuales. ¿Continuar?");
+      const confirmed = confirm("Importar este respaldo reemplazara todos los datos actuales. Continuar?");
       if (!confirmed) return;
 
       state = importedState;
@@ -126,87 +125,147 @@ function normalizeState(source) {
 
   normalized.customers = normalized.customers.map((customer) => ({
     ...customer,
+    id: customer.id || crypto.randomUUID(),
+    name: customer.name || "Cliente sin nombre",
     phone: customer.phone ?? "",
     address: customer.address ?? "",
     notes: customer.notes ?? ""
   }));
 
-  normalized.sales = normalized.sales.map((sale) => ({
-    ...sale,
-    detail: sale.detail ?? `${sale.productName ?? "Compra"} x ${sale.quantity ?? 1}`,
-    paidAmount: Number.isFinite(Number(sale.paidAmount)) ? Number(sale.paidAmount) : Number(sale.total ?? 0)
-  }));
+  if (!normalized.customers.some((customer) => customer.name.toLowerCase() === "cliente mostrador")) {
+    normalized.customers.unshift({ id: crypto.randomUUID(), name: "Cliente mostrador", phone: "", address: "", notes: "" });
+  }
+
+  normalized.sales = normalized.sales.map(normalizeSale);
 
   return normalized;
 }
 
+function normalizeSale(sale) {
+  const saleId = sale.id || crypto.randomUUID();
+  const date = normalizeDateInput(sale.date || sale.createdAt || new Date().toISOString());
+  const customerId = sale.customerId || "";
+  const customerName = sale.customerName || "Cliente mostrador";
+  const items = normalizeSaleItems(sale);
+  const total = getItemsTotal(items);
+  const payments = normalizeSalePayments(sale, total);
+
+  return {
+    id: saleId,
+    date,
+    customerId,
+    customerName,
+    items,
+    payments,
+    total,
+    createdAt: sale.createdAt || sale.date || new Date().toISOString()
+  };
+}
+
+function normalizeSaleItems(sale) {
+  if (Array.isArray(sale.items) && sale.items.length) {
+    return sale.items.map((item) => {
+      const quantity = Math.max(Number(item.quantity ?? 1), 0);
+      const unitPrice = Math.max(Number(item.unitPrice ?? item.price ?? 0), 0);
+      const subtotal = quantity * unitPrice;
+
+      return {
+        id: item.id || crypto.randomUUID(),
+        description: item.description || item.productName || item.detail || "Producto",
+        quantity,
+        unitPrice,
+        subtotal
+      };
+    });
+  }
+
+  const quantity = Math.max(Number(sale.quantity ?? 1), 1);
+  const total = Math.max(Number(sale.total ?? 0), 0);
+  const unitPrice = quantity > 0 ? total / quantity : total;
+
+  return [
+    {
+      id: crypto.randomUUID(),
+      description: sale.detail || sale.productName || "Compra",
+      quantity,
+      unitPrice,
+      subtotal: total
+    }
+  ];
+}
+
+function normalizeSalePayments(sale, saleTotal) {
+  if (Array.isArray(sale.payments)) {
+    return sale.payments
+      .map((payment) => ({
+        id: payment.id || crypto.randomUUID(),
+        date: normalizeDateInput(payment.date || sale.date || new Date().toISOString()),
+        amount: Math.max(Number(payment.amount ?? 0), 0),
+        note: payment.note ?? ""
+      }))
+      .filter((payment) => payment.amount > 0);
+  }
+
+  const paidAmount = Number.isFinite(Number(sale.paidAmount)) ? Number(sale.paidAmount) : Number(saleTotal);
+  if (paidAmount <= 0) return [];
+
+  return [
+    {
+      id: crypto.randomUUID(),
+      date: normalizeDateInput(sale.date || new Date().toISOString()),
+      amount: Math.min(Math.max(paidAmount, 0), saleTotal),
+      note: "Pago inicial"
+    }
+  ];
+}
+
 function render() {
   renderMetrics();
-  renderInventory();
   renderSales();
   renderCustomers();
   renderSaleSelectors();
+  renderSaleItems();
+  updateSaleTotalsPreview();
 }
 
 function renderMetrics() {
-  const stockValue = state.products.reduce((total, product) => total + product.stock * product.price, 0);
-  const monthSales = state.sales.reduce((total, sale) => total + sale.total, 0);
-  const lowStock = state.products.filter((product) => product.stock <= product.minStock);
+  const today = todayInputValue();
+  const currentMonth = today.slice(0, 7);
+  const salesToday = state.sales.filter((sale) => sale.date === today);
+  const salesThisMonth = state.sales.filter((sale) => sale.date?.slice(0, 7) === currentMonth);
+  const daySalesTotal = salesToday.reduce((total, sale) => total + getSaleTotal(sale), 0);
+  const monthSalesTotal = salesThisMonth.reduce((total, sale) => total + getSaleTotal(sale), 0);
+  const dayPaidTotal = state.sales.reduce((total, sale) => total + getPaymentsTotalByPeriod(sale, today, "day"), 0);
+  const monthPaidTotal = state.sales.reduce((total, sale) => total + getPaymentsTotalByPeriod(sale, currentMonth, "month"), 0);
+  const totalBalance = state.sales.reduce((total, sale) => total + getSaleBalance(sale), 0);
+  const pendingSales = state.sales.filter((sale) => getSaleBalance(sale) > 0);
+  const customersWithBalance = new Set(pendingSales.map((sale) => sale.customerId)).size;
+  const recent = state.sales.slice(0, 6);
 
-  document.querySelector("#metric-stock").textContent = money.format(stockValue);
-  document.querySelector("#metric-sales").textContent = money.format(monthSales);
-  document.querySelector("#metric-low-stock").textContent = lowStock.length;
-  document.querySelector("#metric-customers").textContent = state.customers.length;
+  document.querySelector("#metric-day-sales").textContent = money.format(daySalesTotal);
+  document.querySelector("#metric-month-sales").textContent = money.format(monthSalesTotal);
+  document.querySelector("#metric-day-paid").textContent = money.format(dayPaidTotal);
+  document.querySelector("#metric-month-paid").textContent = money.format(monthPaidTotal);
+  document.querySelector("#metric-total-balance").textContent = money.format(totalBalance);
+  document.querySelector("#metric-customers-with-balance").textContent = customersWithBalance;
+  document.querySelector("#metric-pending-sales").textContent = pendingSales.length;
 
-  const alerts = document.querySelector("#stock-alerts");
-  alerts.innerHTML = lowStock.length
-    ? lowStock.map((product) => `
-        <article class="list-item">
-          <div>
-            <strong>${escapeHtml(product.name)}</strong>
-            <span>${escapeHtml(product.category)} - quedan ${product.stock}</span>
-          </div>
-          <span class="badge warn">Min. ${product.minStock}</span>
-        </article>
-      `).join("")
-    : `<p class="empty">No hay productos por debajo del minimo.</p>`;
-
-  const recent = state.sales.slice(0, 5);
-  document.querySelector("#recent-sales").innerHTML = recent.length
-    ? recent.map(saleTemplate).join("")
+  document.querySelector("#recent-movements").innerHTML = recent.length
+    ? recent.map(movementTemplate).join("")
     : `<p class="empty">Todavia no hay ventas registradas.</p>`;
 }
 
-function renderInventory() {
-  document.querySelector("#inventory-table").innerHTML = state.products.map((product) => `
-    <tr>
-      <td><strong>${escapeHtml(product.name)}</strong></td>
-      <td>${escapeHtml(product.category)}</td>
-      <td>${product.stock} ${product.stock <= product.minStock ? `<span class="badge warn">Bajo</span>` : ""}</td>
-      <td>${product.minStock}</td>
-      <td>${money.format(product.price)}</td>
-      <td>
-        <div class="actions">
-          <button class="small-button" type="button" data-edit-product="${product.id}">Editar</button>
-          <button class="small-button danger" type="button" data-delete-product="${product.id}">Eliminar</button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
-}
-
 function renderSaleSelectors() {
-  const productSelect = document.querySelector("#sale-product");
   const customerSelect = document.querySelector("#sale-customer");
-
-  productSelect.innerHTML = state.products
-    .filter((product) => product.stock > 0)
-    .map((product) => `<option value="${product.id}">${escapeHtml(product.name)} - ${money.format(product.price)}</option>`)
-    .join("");
-
   customerSelect.innerHTML = state.customers
     .map((customer) => `<option value="${customer.id}">${escapeHtml(customer.name)}</option>`)
     .join("");
+}
+
+function renderSaleItems() {
+  const items = document.querySelectorAll(".sale-item-row");
+  if (items.length) return;
+  addSaleItemRow();
 }
 
 function renderSales() {
@@ -233,32 +292,41 @@ function renderCustomers() {
 }
 
 function saleTemplate(sale) {
+  const total = getSaleTotal(sale);
+  const paid = getSalePaidAmount(sale);
   const balance = getSaleBalance(sale);
 
   return `
-    <article class="list-item">
+    <article class="list-item sale-list-item">
       <div>
-        <strong>${escapeHtml(sale.detail ?? `${sale.productName} x ${sale.quantity}`)}</strong>
-        <span>${escapeHtml(sale.customerName)} - ${new Date(sale.date).toLocaleDateString("es-AR")}</span>
-        <span>Pagado: ${money.format(getSalePaidAmount(sale))} - Saldo: ${money.format(balance)}</span>
+        <strong>${escapeHtml(sale.customerName)} - ${new Date(sale.date).toLocaleDateString("es-AR")}</strong>
+        <span>${escapeHtml(getSaleSummary(sale))}</span>
+        <span>Pagado: ${money.format(paid)} - Saldo: ${money.format(balance)}</span>
       </div>
       <div>
-        <strong>${money.format(sale.total)}</strong>
-        ${statusBadge(balance, getSalePaidAmount(sale))}
+        <strong>${money.format(total)}</strong>
+        ${statusBadge(balance, paid)}
       </div>
     </article>
   `;
 }
 
-function openProductDialog(product = null) {
-  document.querySelector("#product-dialog-title").textContent = product ? "Editar producto" : "Agregar producto";
-  document.querySelector("#product-id").value = product?.id ?? "";
-  document.querySelector("#product-name").value = product?.name ?? "";
-  document.querySelector("#product-category").value = product?.category ?? "";
-  document.querySelector("#product-stock").value = product?.stock ?? 0;
-  document.querySelector("#product-min-stock").value = product?.minStock ?? 0;
-  document.querySelector("#product-price").value = product?.price ?? 0;
-  document.querySelector("#product-dialog").showModal();
+function movementTemplate(sale) {
+  const paid = getSalePaidAmount(sale);
+  const balance = getSaleBalance(sale);
+
+  return `
+    <article class="list-item sale-list-item">
+      <div>
+        <strong>${new Date(sale.date).toLocaleDateString("es-AR")} - ${escapeHtml(sale.customerName)}</strong>
+        <span>Total: ${money.format(getSaleTotal(sale))}</span>
+        <span>Pagado: ${money.format(paid)} - Saldo: ${money.format(balance)}</span>
+      </div>
+      <div>
+        ${statusBadge(balance, paid)}
+      </div>
+    </article>
+  `;
 }
 
 function openCustomerDialog(customer = null) {
@@ -274,8 +342,9 @@ function openCustomerDetail(customerId) {
   const customer = state.customers.find((item) => item.id === customerId);
   if (!customer) return;
 
-  const sales = state.sales.filter((sale) => sale.customerId === customer.id);
-  const totalBought = sales.reduce((total, sale) => total + Number(sale.total ?? 0), 0);
+  activeCustomerId = customer.id;
+  const sales = getCustomerSales(customer.id);
+  const totalBought = sales.reduce((total, sale) => total + getSaleTotal(sale), 0);
   const totalPaid = sales.reduce((total, sale) => total + getSalePaidAmount(sale), 0);
   const totalBalance = Math.max(totalBought - totalPaid, 0);
   const whatsapp = document.querySelector("#detail-whatsapp");
@@ -287,6 +356,7 @@ function openCustomerDetail(customerId) {
   document.querySelector("#detail-total-bought").textContent = money.format(totalBought);
   document.querySelector("#detail-total-paid").textContent = money.format(totalPaid);
   document.querySelector("#detail-total-balance").textContent = money.format(totalBalance);
+  document.querySelector("#detail-sales-list").innerHTML = sales.map(customerSaleTemplate).join("");
 
   if (totalBalance > 0) {
     const message = `Hola ${customer.name}, te saludamos de Blanquería Mauri. Te recordamos que queda pendiente un saldo de ${money.format(totalBalance)}. Muchas gracias.`;
@@ -299,38 +369,209 @@ function openCustomerDetail(customerId) {
     whatsapp.classList.remove("visible");
   }
 
-  document.querySelector("#detail-sales-table").innerHTML = sales.map((sale) => {
-    const paid = getSalePaidAmount(sale);
-    const balance = getSaleBalance(sale);
-
-    return `
-      <tr>
-        <td>${new Date(sale.date).toLocaleDateString("es-AR")}</td>
-        <td>${escapeHtml(sale.detail ?? `${sale.productName} x ${sale.quantity}`)}</td>
-        <td>${money.format(Number(sale.total ?? 0))}</td>
-        <td>${money.format(paid)}</td>
-        <td>${money.format(balance)}</td>
-        <td>${statusBadge(balance, paid)}</td>
-      </tr>
-    `;
-  }).join("");
-
   document.querySelector("#detail-empty-sales").style.display = sales.length ? "none" : "block";
-  document.querySelector("#customer-detail-dialog").showModal();
+  const dialog = document.querySelector("#customer-detail-dialog");
+  if (!dialog.open) {
+    dialog.showModal();
+  }
+}
+
+function customerSaleTemplate(sale) {
+  const total = getSaleTotal(sale);
+  const paid = getSalePaidAmount(sale);
+  const balance = getSaleBalance(sale);
+
+  return `
+    <article class="history-sale">
+      <div class="history-sale-header">
+        <div>
+          <strong>${new Date(sale.date).toLocaleDateString("es-AR")}</strong>
+          <span>${statusBadge(balance, paid)}</span>
+        </div>
+        <div class="history-sale-totals">
+          <span>Total ${money.format(total)}</span>
+          <span>Pagado ${money.format(paid)}</span>
+          <span>Saldo ${money.format(balance)}</span>
+        </div>
+      </div>
+
+      <div class="history-section">
+        <h4>Items</h4>
+        <div class="history-lines">
+          ${sale.items.map((item) => `
+            <div class="history-line">
+              <span>${escapeHtml(item.description)} x ${item.quantity}</span>
+              <span>${money.format(item.unitPrice)} c/u</span>
+              <strong>${money.format(item.subtotal)}</strong>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="history-section">
+        <h4>Pagos</h4>
+        <div class="history-lines">
+          ${sale.payments.length ? sale.payments.map((payment) => `
+            <div class="history-line">
+              <span>${new Date(payment.date).toLocaleDateString("es-AR")}</span>
+              <span>${escapeHtml(payment.note || "Pago")}</span>
+              <strong>${money.format(payment.amount)}</strong>
+            </div>
+          `).join("") : `<p class="empty compact-empty">Sin pagos registrados.</p>`}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function openPaymentDialog(customerId) {
+  const customer = state.customers.find((item) => item.id === customerId);
+  if (!customer) return;
+
+  const pendingSales = getCustomerSales(customer.id).filter((sale) => getSaleBalance(sale) > 0);
+  if (!pendingSales.length) {
+    alert("Este cliente no tiene ventas pendientes.");
+    return;
+  }
+
+  document.querySelector("#payment-customer-id").value = customer.id;
+  document.querySelector("#payment-sale").innerHTML = pendingSales.map((sale) => `
+    <option value="${sale.id}">${new Date(sale.date).toLocaleDateString("es-AR")} - ${escapeHtml(getSaleSummary(sale))} - saldo ${money.format(getSaleBalance(sale))}</option>
+  `).join("");
+  document.querySelector("#payment-date").value = todayInputValue();
+  document.querySelector("#payment-amount").value = "";
+  document.querySelector("#payment-note").value = "";
+  document.querySelector("#payment-dialog").showModal();
+}
+
+function addSaleItemRow(item = null) {
+  const wrapper = document.querySelector("#sale-items");
+  const row = document.createElement("div");
+  row.className = "sale-item-row";
+  row.innerHTML = `
+    <label>
+      Descripcion
+      <input class="sale-item-description" value="${escapeHtml(item?.description ?? "")}" required />
+    </label>
+    <label>
+      Cantidad
+      <input class="sale-item-quantity" type="number" min="1" step="1" value="${item?.quantity ?? 1}" required />
+    </label>
+    <label>
+      Precio unitario
+      <input class="sale-item-price" type="number" min="0" step="100" value="${item?.unitPrice ?? 0}" required />
+    </label>
+    <div class="sale-item-subtotal">
+      <span>Subtotal</span>
+      <strong>$0</strong>
+    </div>
+    <button class="small-button danger" type="button" data-remove-sale-item>Eliminar</button>
+  `;
+  wrapper.appendChild(row);
+  updateSaleTotalsPreview();
+}
+
+function collectSaleItemsFromForm() {
+  return [...document.querySelectorAll(".sale-item-row")]
+    .map((row) => {
+      const description = row.querySelector(".sale-item-description").value.trim();
+      const quantity = Number(row.querySelector(".sale-item-quantity").value);
+      const unitPrice = Number(row.querySelector(".sale-item-price").value);
+
+      return {
+        id: crypto.randomUUID(),
+        description,
+        quantity,
+        unitPrice,
+        subtotal: quantity * unitPrice
+      };
+    })
+    .filter((item) => item.description && item.quantity > 0 && item.unitPrice >= 0);
+}
+
+function updateSaleTotalsPreview() {
+  document.querySelectorAll(".sale-item-row").forEach((row) => {
+    const quantity = Number(row.querySelector(".sale-item-quantity").value || 0);
+    const unitPrice = Number(row.querySelector(".sale-item-price").value || 0);
+    row.querySelector(".sale-item-subtotal strong").textContent = money.format(quantity * unitPrice);
+  });
+
+  const items = collectSaleItemsFromForm();
+  const total = getItemsTotal(items);
+  const paid = Math.max(Number(document.querySelector("#sale-initial-payment").value || 0), 0);
+  const balance = Math.max(total - paid, 0);
+
+  document.querySelector("#sale-total-preview").textContent = money.format(total);
+  document.querySelector("#sale-paid-preview").textContent = money.format(Math.min(paid, total));
+  document.querySelector("#sale-balance-preview").textContent = money.format(balance);
+}
+
+function resetSaleForm(customerId = null) {
+  document.querySelector("#sale-date").value = todayInputValue();
+  document.querySelector("#sale-initial-payment").value = 0;
+  document.querySelector("#sale-items").innerHTML = "";
+  addSaleItemRow();
+  if (customerId) {
+    document.querySelector("#sale-customer").value = customerId;
+  }
+  updateSaleTotalsPreview();
+}
+
+function showView(viewName) {
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    item.classList.toggle("active", item.dataset.view === viewName);
+  });
+  Object.values(views).forEach((view) => view.classList.remove("active"));
+  views[viewName].classList.add("active");
+  document.querySelector("#view-title").textContent = titles[viewName];
+}
+
+function getCustomerSales(customerId) {
+  return state.sales.filter((sale) => sale.customerId === customerId);
+}
+
+function getItemsTotal(items) {
+  return items.reduce((total, item) => total + Number(item.subtotal ?? item.quantity * item.unitPrice ?? 0), 0);
+}
+
+function getSaleTotal(sale) {
+  return getItemsTotal(sale.items || []);
 }
 
 function getSalePaidAmount(sale) {
-  return Math.max(Number(sale.paidAmount ?? sale.total ?? 0), 0);
+  return (sale.payments || []).reduce((total, payment) => total + Number(payment.amount ?? 0), 0);
+}
+
+function getPaymentsTotalByPeriod(sale, period, mode) {
+  return (sale.payments || []).reduce((total, payment) => {
+    const paymentDate = normalizeDateInput(payment.date);
+    const matches = mode === "month" ? paymentDate.slice(0, 7) === period : paymentDate === period;
+    return matches ? total + Number(payment.amount ?? 0) : total;
+  }, 0);
 }
 
 function getSaleBalance(sale) {
-  return Math.max(Number(sale.total ?? 0) - getSalePaidAmount(sale), 0);
+  return Math.max(getSaleTotal(sale) - getSalePaidAmount(sale), 0);
+}
+
+function getSaleSummary(sale) {
+  return (sale.items || []).map((item) => `${item.description} x ${item.quantity}`).join(", ");
 }
 
 function statusBadge(balance, paidAmount) {
   if (balance <= 0) return `<span class="badge success">Pagado</span>`;
   if (paidAmount > 0) return `<span class="badge warn">Con saldo</span>`;
   return `<span class="badge pending">Pendiente</span>`;
+}
+
+function normalizeDateInput(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return todayInputValue();
+  return date.toISOString().slice(0, 10);
+}
+
+function todayInputValue() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function escapeHtml(value) {
@@ -343,17 +584,13 @@ function escapeHtml(value) {
 }
 
 document.querySelectorAll(".nav-item").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".nav-item").forEach((item) => item.classList.remove("active"));
-    button.classList.add("active");
-    Object.values(views).forEach((view) => view.classList.remove("active"));
-    views[button.dataset.view].classList.add("active");
-    document.querySelector("#view-title").textContent = titles[button.dataset.view];
-  });
+  button.addEventListener("click", () => showView(button.dataset.view));
 });
 
-document.querySelector("#add-product").addEventListener("click", () => openProductDialog());
 document.querySelector("#add-customer").addEventListener("click", () => openCustomerDialog());
+document.querySelector("#add-sale-item").addEventListener("click", () => addSaleItemRow());
+document.querySelector("#sale-items").addEventListener("input", updateSaleTotalsPreview);
+document.querySelector("#sale-initial-payment").addEventListener("input", updateSaleTotalsPreview);
 document.querySelector("#export-backup").addEventListener("click", exportBackup);
 document.querySelector("#import-backup").addEventListener("click", () => {
   document.querySelector("#backup-file").click();
@@ -361,29 +598,14 @@ document.querySelector("#import-backup").addEventListener("click", () => {
 document.querySelector("#backup-file").addEventListener("change", (event) => {
   importBackupFile(event.target.files?.[0]);
 });
-
-document.querySelector("#product-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-
-  const product = {
-    id: document.querySelector("#product-id").value || crypto.randomUUID(),
-    name: document.querySelector("#product-name").value.trim(),
-    category: document.querySelector("#product-category").value.trim(),
-    stock: Number(document.querySelector("#product-stock").value),
-    minStock: Number(document.querySelector("#product-min-stock").value),
-    price: Number(document.querySelector("#product-price").value)
-  };
-
-  const index = state.products.findIndex((item) => item.id === product.id);
-  if (index >= 0) {
-    state.products[index] = product;
-  } else {
-    state.products.push(product);
-  }
-
-  saveState();
-  render();
-  document.querySelector("#product-dialog").close();
+document.querySelector("#detail-new-sale").addEventListener("click", () => {
+  const customerId = activeCustomerId;
+  document.querySelector("#customer-detail-dialog").close();
+  showView("sales");
+  resetSaleForm(customerId);
+});
+document.querySelector("#detail-register-payment").addEventListener("click", () => {
+  openPaymentDialog(activeCustomerId);
 });
 
 document.querySelector("#customer-form").addEventListener("submit", (event) => {
@@ -412,61 +634,92 @@ document.querySelector("#customer-form").addEventListener("submit", (event) => {
 document.querySelector("#sale-form").addEventListener("submit", (event) => {
   event.preventDefault();
 
-  const product = state.products.find((item) => item.id === document.querySelector("#sale-product").value);
   const customer = state.customers.find((item) => item.id === document.querySelector("#sale-customer").value);
-  const quantity = Number(document.querySelector("#sale-quantity").value);
-  const total = product ? quantity * product.price : 0;
-  const paidAmount = Number(document.querySelector("#sale-paid").value);
+  const items = collectSaleItemsFromForm();
+  const total = getItemsTotal(items);
+  const initialPayment = Number(document.querySelector("#sale-initial-payment").value);
 
-  if (!product || !customer || quantity < 1 || quantity > product.stock) {
-    alert("Revisa la cantidad disponible antes de registrar la venta.");
+  if (!customer) {
+    alert("Selecciona un cliente para registrar la venta.");
     return;
   }
 
-  if (paidAmount < 0 || paidAmount > total) {
-    alert("El monto pagado debe estar entre 0 y el total de la venta.");
+  if (!items.length || total <= 0) {
+    alert("Agrega al menos un item con descripcion, cantidad y precio.");
     return;
   }
 
-  product.stock -= quantity;
-  state.sales.unshift({
+  if (initialPayment < 0 || initialPayment > total) {
+    alert("La entrega inicial debe estar entre 0 y el total de la venta.");
+    return;
+  }
+
+  const sale = {
     id: crypto.randomUUID(),
-    productId: product.id,
-    productName: product.name,
+    date: document.querySelector("#sale-date").value,
     customerId: customer.id,
     customerName: customer.name,
-    quantity,
-    detail: `${product.name} x ${quantity}`,
+    items,
+    payments: initialPayment > 0
+      ? [{ id: crypto.randomUUID(), date: document.querySelector("#sale-date").value, amount: initialPayment, note: "Entrega inicial" }]
+      : [],
     total,
-    paidAmount,
-    date: new Date().toISOString()
-  });
+    createdAt: new Date().toISOString()
+  };
 
-  document.querySelector("#sale-quantity").value = 1;
-  document.querySelector("#sale-paid").value = 0;
+  state.sales.unshift(sale);
   saveState();
   render();
+  resetSaleForm(customer.id);
+});
+
+document.querySelector("#payment-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const sale = state.sales.find((item) => item.id === document.querySelector("#payment-sale").value);
+  const amount = Number(document.querySelector("#payment-amount").value);
+  const balance = sale ? getSaleBalance(sale) : 0;
+
+  if (!sale) {
+    alert("Selecciona una venta pendiente.");
+    return;
+  }
+
+  if (amount <= 0 || amount > balance) {
+    alert("El monto debe ser mayor a 0 y no puede superar el saldo de la venta seleccionada.");
+    return;
+  }
+
+  sale.payments.push({
+    id: crypto.randomUUID(),
+    date: document.querySelector("#payment-date").value,
+    amount,
+    note: document.querySelector("#payment-note").value.trim()
+  });
+
+  saveState();
+  render();
+  document.querySelector("#payment-dialog").close();
+  if (activeCustomerId) openCustomerDetail(activeCustomerId);
 });
 
 document.body.addEventListener("click", (event) => {
   const viewCustomerId = event.target.dataset.viewCustomer;
-  const editProductId = event.target.dataset.editProduct;
-  const deleteProductId = event.target.dataset.deleteProduct;
   const editCustomerId = event.target.dataset.editCustomer;
   const deleteCustomerId = event.target.dataset.deleteCustomer;
 
+  if (event.target.matches("[data-remove-sale-item]")) {
+    const rows = document.querySelectorAll(".sale-item-row");
+    if (rows.length <= 1) {
+      alert("La venta debe tener al menos un item.");
+      return;
+    }
+    event.target.closest(".sale-item-row").remove();
+    updateSaleTotalsPreview();
+  }
+
   if (viewCustomerId) {
     openCustomerDetail(viewCustomerId);
-  }
-
-  if (editProductId) {
-    openProductDialog(state.products.find((product) => product.id === editProductId));
-  }
-
-  if (deleteProductId && confirm("Eliminar este producto?")) {
-    state.products = state.products.filter((product) => product.id !== deleteProductId);
-    saveState();
-    render();
   }
 
   if (editCustomerId) {
@@ -486,9 +739,11 @@ document.body.addEventListener("click", (event) => {
 
 document.querySelector("#reset-demo").addEventListener("click", () => {
   if (!confirm("Restaurar datos demo? Se reemplazaran los cambios guardados en este navegador.")) return;
-  state = structuredClone(demoState);
+  state = normalizeState(structuredClone(demoState));
   saveState();
   render();
 });
 
+document.querySelector("#sale-date").value = todayInputValue();
+document.querySelector("#payment-date").value = todayInputValue();
 render();
