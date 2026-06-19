@@ -213,9 +213,17 @@
 
         <div class="detail-actions">
           <button id="detail-new-sale" class="ghost-button" type="button">Nueva venta</button>
-          <button id="detail-register-payment" class="ghost-button" type="button">Registrar pago</button>
+          <button id="detail-register-payment" class="ghost-button" type="button">Registrar entrega</button>
           <a id="detail-whatsapp" class="whatsapp-button" target="_blank" rel="noopener">Enviar WhatsApp</a>
         </div>
+
+        <section>
+          <div class="panel-header">
+            <h3>Entregas registradas</h3>
+          </div>
+          <div id="detail-deliveries-list" class="customer-history"></div>
+          <p id="detail-empty-deliveries" class="empty">Este cliente no tiene entregas registradas.</p>
+        </section>
 
         <section>
           <div class="panel-header">
@@ -229,18 +237,14 @@
 
     <dialog id="payment-dialog">
       <form id="payment-form" method="dialog" class="modal-form">
-        <h2>Registrar pago</h2>
+        <h2>Registrar entrega</h2>
         <input id="payment-customer-id" type="hidden" />
         <label>
-          Venta pendiente
-          <select id="payment-sale" required></select>
-        </label>
-        <label>
-          Fecha de pago
+          Fecha de entrega
           <input id="payment-date" type="date" required />
         </label>
         <label>
-          Monto
+          Monto entregado
           <input id="payment-amount" type="number" min="1" step="1" inputmode="numeric" required />
         </label>
         <label>
@@ -249,7 +253,7 @@
         </label>
         <div class="modal-actions">
           <button class="ghost-button" value="cancel" type="button" data-close-dialog>Cancelar</button>
-          <button class="primary-button" value="default" type="submit">Guardar pago</button>
+          <button class="primary-button" value="default" type="submit">Guardar entrega</button>
         </div>
       </form>
     </dialog>

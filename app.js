@@ -201,7 +201,9 @@ function normalizeSalePayments(sale, saleTotal) {
         id: payment.id || crypto.randomUUID(),
         date: normalizeDateInput(payment.date || sale.date || new Date().toISOString()),
         amount: Math.max(Number(payment.amount ?? 0), 0),
-        note: payment.note ?? ""
+        note: payment.note ?? "",
+        batchId: payment.batchId ?? payment.deliveryId ?? "",
+        deliveryAmount: Number(payment.deliveryAmount ?? payment.amount ?? 0)
       }))
       .filter((payment) => payment.amount > 0);
   }
@@ -214,7 +216,9 @@ function normalizeSalePayments(sale, saleTotal) {
       id: crypto.randomUUID(),
       date: normalizeDateInput(sale.date || new Date().toISOString()),
       amount: Math.min(Math.max(paidAmount, 0), saleTotal),
-      note: "Pago inicial"
+      note: "Pago inicial",
+      batchId: "",
+      deliveryAmount: Math.min(Math.max(paidAmount, 0), saleTotal)
     }
   ];
 }
@@ -356,6 +360,7 @@ function openCustomerDetail(customerId) {
   document.querySelector("#detail-total-bought").textContent = money.format(totalBought);
   document.querySelector("#detail-total-paid").textContent = money.format(totalPaid);
   document.querySelector("#detail-total-balance").textContent = money.format(totalBalance);
+  document.querySelector("#detail-deliveries-list").innerHTML = customerDeliveriesTemplate(sales);
   document.querySelector("#detail-sales-list").innerHTML = sales.map(customerSaleTemplate).join("");
 
   if (totalBalance > 0) {
@@ -370,10 +375,39 @@ function openCustomerDetail(customerId) {
   }
 
   document.querySelector("#detail-empty-sales").style.display = sales.length ? "none" : "block";
+  document.querySelector("#detail-empty-deliveries").style.display = getCustomerDeliveries(sales).length ? "none" : "block";
   const dialog = document.querySelector("#customer-detail-dialog");
   if (!dialog.open) {
     dialog.showModal();
   }
+}
+
+function customerDeliveriesTemplate(sales) {
+  const deliveries = getCustomerDeliveries(sales);
+
+  return deliveries.map((delivery) => `
+    <article class="history-sale delivery-card">
+      <div class="history-sale-header">
+        <div>
+          <strong>${new Date(delivery.date).toLocaleDateString("es-AR")}</strong>
+          <span>${escapeHtml(delivery.note || "Entrega general")}</span>
+        </div>
+        <div class="history-sale-totals">
+          <span>Entregado ${money.format(delivery.total)}</span>
+          <span>Aplicado a ${delivery.applications.length} venta${delivery.applications.length === 1 ? "" : "s"}</span>
+        </div>
+      </div>
+      <div class="history-lines">
+        ${delivery.applications.map((application) => `
+          <div class="history-line">
+            <span>${new Date(application.sale.date).toLocaleDateString("es-AR")} - ${escapeHtml(getSaleSummary(application.sale))}</span>
+            <span>Aplicado</span>
+            <strong>${money.format(application.amount)}</strong>
+          </div>
+        `).join("")}
+      </div>
+    </article>
+  `).join("");
 }
 
 function customerSaleTemplate(sale) {
@@ -435,13 +469,51 @@ function openPaymentDialog(customerId) {
   }
 
   document.querySelector("#payment-customer-id").value = customer.id;
-  document.querySelector("#payment-sale").innerHTML = pendingSales.map((sale) => `
-    <option value="${sale.id}">${new Date(sale.date).toLocaleDateString("es-AR")} - ${escapeHtml(getSaleSummary(sale))} - saldo ${money.format(getSaleBalance(sale))}</option>
-  `).join("");
   document.querySelector("#payment-date").value = todayInputValue();
   document.querySelector("#payment-amount").value = "";
   document.querySelector("#payment-note").value = "";
   document.querySelector("#payment-dialog").showModal();
+}
+
+function applyGeneralPayment(customerId, date, amount, note) {
+  const pendingSales = getCustomerSales(customerId)
+    .filter((sale) => getSaleBalance(sale) > 0)
+    .sort((left, right) => {
+      const dateComparison = new Date(left.date).getTime() - new Date(right.date).getTime();
+      return dateComparison || new Date(left.createdAt || left.date).getTime() - new Date(right.createdAt || right.date).getTime();
+    });
+  const totalBalance = pendingSales.reduce((total, sale) => total + getSaleBalance(sale), 0);
+
+  if (amount <= 0) {
+    alert("El monto entregado debe ser mayor a 0.");
+    return false;
+  }
+
+  if (amount > totalBalance) {
+    alert(`La entrega supera el saldo total del cliente. Saldo actual: ${money.format(totalBalance)}.`);
+    return false;
+  }
+
+  const batchId = crypto.randomUUID();
+  let remaining = amount;
+
+  pendingSales.forEach((sale) => {
+    if (remaining <= 0) return;
+
+    const balance = getSaleBalance(sale);
+    const appliedAmount = Math.min(balance, remaining);
+    sale.payments.push({
+      id: crypto.randomUUID(),
+      date,
+      amount: appliedAmount,
+      note: note || "Entrega general",
+      batchId,
+      deliveryAmount: amount
+    });
+    remaining -= appliedAmount;
+  });
+
+  return true;
 }
 
 function addSaleItemRow(item = null) {
@@ -540,6 +612,32 @@ function getSaleTotal(sale) {
 
 function getSalePaidAmount(sale) {
   return (sale.payments || []).reduce((total, payment) => total + Number(payment.amount ?? 0), 0);
+}
+
+function getCustomerDeliveries(sales) {
+  const deliveries = new Map();
+
+  sales.forEach((sale) => {
+    (sale.payments || []).forEach((payment) => {
+      const key = payment.batchId || payment.id;
+      if (!deliveries.has(key)) {
+        deliveries.set(key, {
+          id: key,
+          date: payment.date,
+          note: payment.note,
+          total: Number(payment.batchId ? payment.deliveryAmount : payment.amount),
+          applications: []
+        });
+      }
+
+      deliveries.get(key).applications.push({
+        sale,
+        amount: Number(payment.amount ?? 0)
+      });
+    });
+  });
+
+  return [...deliveries.values()].sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
 }
 
 function getPaymentsTotalByPeriod(sale, period, mode) {
@@ -676,26 +774,15 @@ document.querySelector("#sale-form").addEventListener("submit", (event) => {
 document.querySelector("#payment-form").addEventListener("submit", (event) => {
   event.preventDefault();
 
-  const sale = state.sales.find((item) => item.id === document.querySelector("#payment-sale").value);
+  const customerId = document.querySelector("#payment-customer-id").value;
   const amount = Number(document.querySelector("#payment-amount").value);
-  const balance = sale ? getSaleBalance(sale) : 0;
-
-  if (!sale) {
-    alert("Selecciona una venta pendiente.");
-    return;
-  }
-
-  if (amount <= 0 || amount > balance) {
-    alert("El monto debe ser mayor a 0 y no puede superar el saldo de la venta seleccionada.");
-    return;
-  }
-
-  sale.payments.push({
-    id: crypto.randomUUID(),
-    date: document.querySelector("#payment-date").value,
+  const applied = applyGeneralPayment(
+    customerId,
+    document.querySelector("#payment-date").value,
     amount,
-    note: document.querySelector("#payment-note").value.trim()
-  });
+    document.querySelector("#payment-note").value.trim()
+  );
+  if (!applied) return;
 
   saveState();
   render();
