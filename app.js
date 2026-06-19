@@ -459,7 +459,7 @@ function addSaleItemRow(item = null) {
     </label>
     <label>
       Precio unitario
-      <input class="sale-item-price" type="number" min="0" step="100" value="${item?.unitPrice ?? 0}" required />
+      <input class="sale-item-price" type="number" min="0" step="1" inputmode="numeric" value="${item?.unitPrice ?? 0}" required />
     </label>
     <div class="sale-item-subtotal">
       <span>Subtotal</span>
