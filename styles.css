@@ -422,6 +422,36 @@ textarea {
   gap: 12px;
 }
 
+.customer-search {
+  position: relative;
+  display: block;
+  margin-bottom: 16px;
+  color: var(--ink);
+}
+
+.customer-search-icon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  font-size: 1rem;
+  pointer-events: none;
+}
+
+.customer-search input {
+  min-height: 46px;
+  padding-left: 42px;
+  padding-right: 38px;
+  background: #fbfcfa;
+}
+
+.customer-search input:focus {
+  border-color: var(--accent-dark);
+  outline: 2px solid rgba(242, 182, 50, 0.22);
+  outline-offset: 1px;
+}
+
 .customer-card {
   display: grid;
   gap: 10px;

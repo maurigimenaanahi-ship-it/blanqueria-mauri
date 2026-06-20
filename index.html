@@ -140,7 +140,17 @@
               <h2>Clientes</h2>
               <button id="add-customer" class="primary-button" type="button">Agregar cliente</button>
             </div>
+            <label class="customer-search" for="customer-search">
+              <span class="customer-search-icon" aria-hidden="true">&#128269;</span>
+              <input
+                id="customer-search"
+                type="search"
+                placeholder="Buscar cliente por nombre, teléfono o dirección..."
+                autocomplete="off"
+              />
+            </label>
             <div id="customers-list" class="customer-grid"></div>
+            <p id="customers-empty" class="empty" hidden>No se encontraron clientes.</p>
           </section>
         </section>
       </main>

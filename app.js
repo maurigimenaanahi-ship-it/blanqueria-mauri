@@ -279,7 +279,20 @@ function renderSales() {
 }
 
 function renderCustomers() {
-  document.querySelector("#customers-list").innerHTML = state.customers.map((customer) => `
+  const query = normalizeSearchText(document.querySelector("#customer-search")?.value ?? "");
+  const customers = query
+    ? state.customers.filter((customer) => {
+        const searchableText = normalizeSearchText([
+          customer.name,
+          customer.phone,
+          customer.address,
+          customer.notes
+        ].join(" "));
+        return searchableText.includes(query);
+      })
+    : state.customers;
+
+  document.querySelector("#customers-list").innerHTML = customers.map((customer) => `
     <article class="customer-card">
       <div>
         <strong>${escapeHtml(customer.name)}</strong>
@@ -293,6 +306,15 @@ function renderCustomers() {
       </div>
     </article>
   `).join("");
+  document.querySelector("#customers-empty").hidden = customers.length > 0;
+}
+
+function normalizeSearchText(value) {
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 }
 
 function saleTemplate(sale) {
@@ -686,6 +708,7 @@ document.querySelectorAll(".nav-item").forEach((button) => {
 });
 
 document.querySelector("#add-customer").addEventListener("click", () => openCustomerDialog());
+document.querySelector("#customer-search").addEventListener("input", renderCustomers);
 document.querySelector("#add-sale-item").addEventListener("click", () => addSaleItemRow());
 document.querySelector("#sale-items").addEventListener("input", updateSaleTotalsPreview);
 document.querySelector("#sale-initial-payment").addEventListener("input", updateSaleTotalsPreview);
